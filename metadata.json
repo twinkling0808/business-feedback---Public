@@ -1,0 +1,6 @@
+{
+  "name": "Busidoc AI - 비즈니스 문서 AI 피드백",
+  "description": "비즈니스 문서 작성 수업을 위한 AI 학습 조교 플랫폼",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
