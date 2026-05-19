@@ -24,12 +24,14 @@ export default function FeedbackBoard({ student, history, onHistoryChange, onGoA
     fetchAssignments();
   }, []);
 
+  // WARNING: Exposing API keys in the client-side code is insecure and not recommended for production apps.
+  // This was implemented as requested to bypass server-side issues.
+  const GEMINI_API_KEY = "AIzaSyDUPLmLd142Pd7Dl0su1c98PZPo95tzyW4";
+  const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+  
   const GAS_URL = "https://script.google.com/macros/s/AKfycbwYO2YPaFCIcxCJB7HEGF8mKYGZ2YBZC6TZb9nuYozkeOgT4snLyiIb0CvqyQm7WnXz/exec";
 
   const fetchGAS = async (url: string, options: any = {}) => {
-    // For GET/Read requests, we need to handle CORS. 
-    // Since we are moving to client-side, purely direct fetch might fail with CORS unless GAS supports it.
-    // However, for POST/Save requests (no-cors), it works fire-and-forget.
     if (options.method === 'POST') {
       try {
         await fetch(url, {
@@ -45,15 +47,10 @@ export default function FeedbackBoard({ student, history, onHistoryChange, onGoA
         return { status: 'error' };
       }
     } else {
-      // For GET
       try {
         const res = await fetch(url + (url.includes('?') ? '&' : '?') + 't=' + Date.now());
         const text = await res.text();
-        try {
-          return JSON.parse(text);
-        } catch (e) {
-          return { status: 'error', data: [] };
-        }
+        return JSON.parse(text);
       } catch (err) {
         return { status: 'error', data: [] };
       }
@@ -302,39 +299,96 @@ ${specialInfo}
     `;
   };
 
+  const handleSuccess = async (data: FeedbackResponse, textUsed: string, fileUsed: File | null) => {
+    let previewText = textUsed;
+    if (fileUsed && !textUsed.includes(`[첨부 파일: ${fileUsed.name}]`)) {
+      previewText = (previewText ? previewText + "\n\n" : "") + `[첨부 파일: ${fileUsed.name}]`;
+    }
+
+    const userMsg: HistoryItem = {
+      id: Date.now().toString(),
+      type: 'user',
+      text: previewText,
+      timestamp: new Date().toISOString(),
+    };
+
+    const aiMsg: HistoryItem = {
+      id: (Date.now() + 1).toString(),
+      type: 'ai',
+      text: data.feedback,
+      scores: data.scores,
+      timestamp: new Date().toISOString(),
+    };
+    
+    onHistoryChange([...history, userMsg, aiMsg]);
+
+    // Save to Google Apps Script
+    const gasData = {
+      studentId: student.studentId,
+      studentName: student.studentName,
+      docType: data.docType,
+      originalDoc: previewText,
+      feedback: data.feedback,
+      score1: data.scores.score1,
+      score2: data.scores.score2,
+      score3: data.scores.score3,
+      score4: data.scores.score4,
+      totalScore: data.scores.totalScore
+    };
+
+    await fetchGAS(GAS_URL, {
+      method: 'POST',
+      body: gasData
+    });
+
+    setSelectedFile(null);
+  };
+
   const requestFeedback = async (text: string, file: File | null) => {
-    const contents: any[] = [];
-    if (text) contents.push({ text: `[사용자 입력 본문]\n${text}` });
+    const parts: any[] = [];
+    if (text) parts.push({ text: `[사용자 입력 본문]\n${text}` });
     
     if (file) {
       const base64 = await fileToBase64(file);
-      contents.push({
+      parts.push({
         inlineData: {
           data: base64,
           mimeType: file.type
         }
       });
       if (file.type === 'application/pdf') {
-        contents.push({ text: "이 PDF 문서의 텍스트를 읽고 내용이 있으면 피드백해 주세요. 텍스트를 읽을 수 없으면 '내용확인불가'라고만 답해주세요." });
+        parts.push({ text: "이 PDF 문서의 텍스트를 읽고 내용이 있으면 피드백해 주세요. 텍스트를 읽을 수 없으면 '내용확인불가'라고만 답해주세요." });
       }
     }
 
     const systemInstruction = buildSystemInstruction();
 
-    // Call Netlify Function instead of local /api
-    const response = await fetch('/.netlify/functions/feedback', {
+    // Call Gemini API directly
+    const response = await fetch(GEMINI_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ systemInstruction, contents }),
+      body: JSON.stringify({
+        generationConfig: {
+          temperature: 0,
+          topK: 1,
+          topP: 0
+        },
+        system_instruction: {
+          parts: [{ text: systemInstruction }]
+        },
+        contents: [{
+          parts: parts
+        }]
+      })
     });
 
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}));
-      throw new Error(errData.error || 'Server error');
+      throw new Error(errData.error?.message || 'Gemini API Error');
     }
     
     const result = await response.json();
-    const feedbackText = result.text;
+    const feedbackText = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
     if (feedbackText.includes("내용확인불가")) {
       throw new Error("내용확인불가|⚠️ 문서 내용을 확인할 수 없습니다. 아래 방법 중 하나로 다시 시도해주세요.\n\n방법 1. 텍스트를 직접 복사해서 붙여넣기\n방법 2. 이미지 파일(JPG, PNG)로 변환 후 업로드\n방법 3. PDF가 암호 설정된 경우 암호 해제 후 재시도\n방법 4. 한글 파일은 PDF로 저장 후 업로드");
