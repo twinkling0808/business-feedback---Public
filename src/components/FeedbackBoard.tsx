@@ -56,8 +56,7 @@ export default function FeedbackBoard({ student, history, onHistoryChange, onGoA
 
   // WARNING: Exposing API keys in the client-side code is insecure and not recommended for production apps.
   // This was implemented as requested to bypass server-side issues.
-  const GEMINI_API_KEY = (import.meta as any).env.VITE_GEMINI_API_KEY || '';
-  const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+  const GEMINI_URL = '/.netlify/functions/gemini';
   
   const GAS_URL = "https://script.google.com/macros/s/AKfycbwYO2YPaFCIcxCJB7HEGF8mKYGZ2YBZC6TZb9nuYozkeOgT4snLyiIb0CvqyQm7WnXz/exec";
 
