@@ -34,7 +34,7 @@ const defaultCriteria: Record<string, { name: string; criteria: { name: string; 
   '부고문': {
     name: '부고문',
     criteria: [
-      { name: '장례 정보 완결성', maxScore: 25, description: '고인명·별세·발인·빈소·연락처' },
+      { name: '장례 정보 완결성', maxScore: 25, description: '별세·발인·빈소·연락처' },
       { name: '유족 관계 표기', maxScore: 25, description: '관계 표기·호칭 정확성' },
       { name: '경건한 어조', maxScore: 25, description: '절제된 어조·관용 표현' },
       { name: '형식적 무결점', maxScore: 25, description: '오탈자·날짜·한자 오류' }
